@@ -72200,9 +72200,10 @@ async function run() {
         const exeSourcePath = path.join(buildDir, 'src-tauri', 'target', 'release', appBinaryName);
 
         let pyappifyVersion = core.getInput('version');
+        const exeCached = fs.existsSync(exeSourcePath);
 
-
-        if (!fs.existsSync(exeSourcePath)) {
+        // Always clone pyappify repo (needed for tauri bundle / NSIS packaging)
+        if (!fs.existsSync(buildDir)) {
             core.startGroup('Cloning pyappify repository');
             await exec.exec('git', ['clone', 'https://github.com/ok-oldking/pyappify.git', buildDir]);
             if (pyappifyVersion) {
@@ -72222,59 +72223,74 @@ async function run() {
                 await exec.exec('git', ['checkout', latestTag], { cwd: buildDir });
             }
             core.endGroup();
+        } else {
+            core.info(`Build directory already exists: ${buildDir}`);
+        }
 
-            await setupPnpm();
+        // Always setup pnpm (needed for tauri bundle)
+        await setupPnpm();
+
+        // Only setup Rust if we need to compile
+        if (!exeCached && !useRelease) {
             await setupRust();
+        }
 
-            core.startGroup('Reading and preparing build');
-            fs.copyFileSync(configFile, path.join(buildDir, 'src-tauri', 'assets', configFile));
-            if (fs.existsSync('icons')) {
-                const targetPath = path.join(buildDir, 'src-tauri', 'icons')
-                core.info(`icons folder exists copy to ${targetPath}`);
-                fs.cpSync('icons', targetPath, { recursive: true });
-            } else {
-                core.info(`icons does not exist.`);
-            }
+        core.startGroup('Reading and preparing build');
+        fs.copyFileSync(configFile, path.join(buildDir, 'src-tauri', 'assets', configFile));
+        if (fs.existsSync('icons')) {
+            const targetPath = path.join(buildDir, 'src-tauri', 'icons')
+            core.info(`icons folder exists copy to ${targetPath}`);
+            fs.cpSync('icons', targetPath, { recursive: true });
+        } else {
+            core.info(`icons does not exist.`);
+        }
 
-            const tauriConfPath = path.join(buildDir, 'src-tauri', 'tauri.conf.json');
-            const tauriConf = fs.readFileSync(tauriConfPath, 'utf8');
-            let newTauriConf = tauriConf.replace(/"pyappify"/g, JSON.stringify(appName));
-            newTauriConf = newTauriConf.replace(/"0.0.1"/g, JSON.stringify(pyappifyVersion.replace(/^v/, '')));
-            fs.writeFileSync(tauriConfPath, newTauriConf);
+        const tauriConfPath = path.join(buildDir, 'src-tauri', 'tauri.conf.json');
+        const tauriConf = fs.readFileSync(tauriConfPath, 'utf8');
+        let newTauriConf = tauriConf.replace(/"pyappify"/g, JSON.stringify(appName));
+        newTauriConf = newTauriConf.replace(/"0.0.1"/g, JSON.stringify(pyappifyVersion.replace(/^v/, '')));
+        fs.writeFileSync(tauriConfPath, newTauriConf);
 
-            const cargoTomlPath = path.join(buildDir, 'src-tauri', 'Cargo.toml');
-            const cargoToml = fs.readFileSync(cargoTomlPath, 'utf8');
-            const newCargoToml = cargoToml.replace(/name = "pyappify"/g, `name = "${appName}"`);
-            fs.writeFileSync(cargoTomlPath, newCargoToml);
+        const cargoTomlPath = path.join(buildDir, 'src-tauri', 'Cargo.toml');
+        const cargoToml = fs.readFileSync(cargoTomlPath, 'utf8');
+        const newCargoToml = cargoToml.replace(/name = "pyappify"/g, `name = "${appName}"`);
+        fs.writeFileSync(cargoTomlPath, newCargoToml);
 
-            allowPnpmBuildScripts(path.join(buildDir, 'package.json'));
+        allowPnpmBuildScripts(path.join(buildDir, 'package.json'));
 
-            if (config.uac === true) {
-                const buildRsPath = path.join(buildDir, 'src-tauri', 'build.rs');
-                const buildRs = fs.readFileSync(buildRsPath, 'utf8');
-                const newBuildRs = buildRs.replace('const UAC: bool = false;', 'const UAC: bool = true;');
-                fs.writeFileSync(buildRsPath, newBuildRs);
-                core.info('UAC set to true in build.rs');
-            }
+        if (config.uac === true) {
+            const buildRsPath = path.join(buildDir, 'src-tauri', 'build.rs');
+            const buildRs = fs.readFileSync(buildRsPath, 'utf8');
+            const newBuildRs = buildRs.replace('const UAC: bool = false;', 'const UAC: bool = true;');
+            fs.writeFileSync(buildRsPath, newBuildRs);
+            core.info('UAC set to true in build.rs');
+        }
+        core.endGroup();
+
+        // Always install frontend deps (needed for tauri bundle)
+        core.startGroup('Installing dependencies');
+        await exec.exec('pnpm', ['install'], { cwd: buildDir });
+        core.endGroup();
+
+        if (exeCached) {
+            core.info(`Using cached exe: ${exeSourcePath} (skipping Rust build)`);
+        } else if (useRelease) {
+            core.startGroup('Downloading exe from release');
+            await downloadAndExtractRelease(useRelease, appName, platform, exeDestPath, exeSourcePath);
             core.endGroup();
+        } else {
             core.startGroup('Building application with Cargo');
-            await exec.exec('pnpm', ['install'], { cwd: buildDir });
-            if (useRelease) {
-                await downloadAndExtractRelease(useRelease, appName, platform, exeDestPath, exeSourcePath);
-                core.endGroup();
-            } else {
-                await exec.exec('pnpm', ['tauri', 'build'], { cwd: buildDir });
-                core.endGroup();
-                if (buildExeOnly) {
-                    if (!fs.existsSync(exeSourcePath)) {
-                        throw new Error(`Binary not found at ${exeSourcePath} after build attempt.`);
-                    }
-                    const exeSourceFolder = path.dirname(exeSourcePath);
-                    core.setOutput('exe-path', exeSourcePath);
-                    core.setOutput('exe-folder', exeSourceFolder);
-                    core.info(`build_exe_only is true. Action finished. Exe path: ${exeSourcePath}`);
-                    return;
+            await exec.exec('pnpm', ['tauri', 'build'], { cwd: buildDir });
+            core.endGroup();
+            if (buildExeOnly) {
+                if (!fs.existsSync(exeSourcePath)) {
+                    throw new Error(`Binary not found at ${exeSourcePath} after build attempt.`);
                 }
+                const exeSourceFolder = path.dirname(exeSourcePath);
+                core.setOutput('exe-path', exeSourcePath);
+                core.setOutput('exe-folder', exeSourceFolder);
+                core.info(`build_exe_only is true. Action finished. Exe path: ${exeSourcePath}`);
+                return;
             }
         }
 
