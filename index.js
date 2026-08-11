@@ -303,8 +303,26 @@ async function run() {
             if (fs.existsSync(generatedDataPath)) {
                 await io.mv(generatedDataPath, tauriDataPath);
                 core.info(`Moved data for profile ${profile.name} to ${tauriDataPath}`);
-                const gitDirInData = path.join(tauriDataPath, 'apps', appName, 'working', '.git');
-                if (fs.existsSync(gitDirInData)) { await io.rmRF(gitDirInData); core.info('Removed .git from bundle data'); }
+                // Remove all .git directories recursively to save ~500MB
+                const findGitDirs = (dir) => {
+                    const dirs = [];
+                    if (!fs.existsSync(dir)) return dirs;
+                    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                        if (entry.isDirectory()) {
+                            const fullPath = path.join(dir, entry.name);
+                            if (entry.name === '.git') {
+                                dirs.push(fullPath);
+                            } else {
+                                dirs.push(...findGitDirs(fullPath));
+                            }
+                        }
+                    }
+                    return dirs;
+                };
+                for (const gitDir of findGitDirs(tauriDataPath)) {
+                    await io.rmRF(gitDir);
+                    core.info(`Removed .git: ${gitDir}`);
+                }
             }
 
             await exec.exec('pnpm', ['tauri', 'bundle'], { cwd: buildDir });
