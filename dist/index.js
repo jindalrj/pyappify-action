@@ -72354,15 +72354,12 @@ async function run() {
                         core.info(`Removed .git: ${gitDir}`);
                     }
                 }
-                // Bundle tesseract/ directory if it exists in workspace
+                // Bundle tesseract/ at app level (outside repo/ so git fetch won't remove it)
                 const tesseractSrc = path.join(process.cwd(), 'tesseract');
                 if (fs.existsSync(tesseractSrc)) {
-                    const repoDir = path.join(tauriDataPath, 'apps', appName, 'repo');
-                    const tesseractDst = fs.existsSync(repoDir)
-                        ? path.join(repoDir, 'tesseract')
-                        : path.join(tauriDataPath, 'apps', appName, 'working', 'tesseract');
+                    const tesseractDst = path.join(tauriDataPath, 'apps', appName, 'tesseract');
                     fs.cpSync(tesseractSrc, tesseractDst, { recursive: true });
-                    core.info(`Bundled tesseract from ${tesseractSrc} to ${tesseractDst}`);
+                    core.info(`Bundled tesseract to ${tesseractDst}`);
                 }
             } else {
                 core.warning(`[diag] generatedDataPath NOT FOUND: ${generatedDataPath} - .git removal skipped`);
