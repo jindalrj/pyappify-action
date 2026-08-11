@@ -303,6 +303,8 @@ async function run() {
             if (fs.existsSync(generatedDataPath)) {
                 await io.mv(generatedDataPath, tauriDataPath);
                 core.info(`Moved data for profile ${profile.name} to ${tauriDataPath}`);
+                const gitDirInData = path.join(tauriDataPath, 'apps', appName, 'working', '.git');
+                if (fs.existsSync(gitDirInData)) { await io.rmRF(gitDirInData); core.info('Removed .git from bundle data'); }
             }
 
             await exec.exec('pnpm', ['tauri', 'bundle'], { cwd: buildDir });
