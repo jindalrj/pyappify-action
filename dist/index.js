@@ -72325,6 +72325,17 @@ async function run() {
             if (fs.existsSync(generatedDataPath)) {
                 await io.mv(generatedDataPath, tauriDataPath);
                 core.info(`Moved data for profile ${profile.name} to ${tauriDataPath}`);
+                // Remove .git at known locations (avoid recursive traversal which can hang on symlinks)
+                const gitPaths = [
+                    path.join(tauriDataPath, 'apps', appName, 'repo', '.git'),
+                    path.join(tauriDataPath, 'apps', appName, 'working', '.git'),
+                ];
+                for (const gitDir of gitPaths) {
+                    if (fs.existsSync(gitDir)) {
+                        await io.rmRF(gitDir);
+                        core.info(`Removed .git: ${gitDir}`);
+                    }
+                }
             }
 
             await exec.exec('pnpm', ['tauri', 'bundle'], { cwd: buildDir });

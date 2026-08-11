@@ -303,25 +303,16 @@ async function run() {
             if (fs.existsSync(generatedDataPath)) {
                 await io.mv(generatedDataPath, tauriDataPath);
                 core.info(`Moved data for profile ${profile.name} to ${tauriDataPath}`);
-                // Remove all .git directories recursively to save ~500MB
-                const findGitDirs = (dir) => {
-                    const dirs = [];
-                    if (!fs.existsSync(dir)) return dirs;
-                    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                        if (entry.isDirectory()) {
-                            const fullPath = path.join(dir, entry.name);
-                            if (entry.name === '.git') {
-                                dirs.push(fullPath);
-                            } else {
-                                dirs.push(...findGitDirs(fullPath));
-                            }
-                        }
+                // Remove .git at known locations (avoid recursive traversal which can hang on symlinks)
+                const gitPaths = [
+                    path.join(tauriDataPath, 'apps', appName, 'repo', '.git'),
+                    path.join(tauriDataPath, 'apps', appName, 'working', '.git'),
+                ];
+                for (const gitDir of gitPaths) {
+                    if (fs.existsSync(gitDir)) {
+                        await io.rmRF(gitDir);
+                        core.info(`Removed .git: ${gitDir}`);
                     }
-                    return dirs;
-                };
-                for (const gitDir of findGitDirs(tauriDataPath)) {
-                    await io.rmRF(gitDir);
-                    core.info(`Removed .git: ${gitDir}`);
                 }
             }
 
