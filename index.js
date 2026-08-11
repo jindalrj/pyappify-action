@@ -332,6 +332,16 @@ async function run() {
                         core.info(`Removed .git: ${gitDir}`);
                     }
                 }
+                // Bundle tesseract/ directory if it exists in workspace
+                const tesseractSrc = path.join(process.cwd(), 'tesseract');
+                if (fs.existsSync(tesseractSrc)) {
+                    const repoDir = path.join(tauriDataPath, 'apps', appName, 'repo');
+                    const tesseractDst = fs.existsSync(repoDir)
+                        ? path.join(repoDir, 'tesseract')
+                        : path.join(tauriDataPath, 'apps', appName, 'working', 'tesseract');
+                    fs.cpSync(tesseractSrc, tesseractDst, { recursive: true });
+                    core.info(`Bundled tesseract from ${tesseractSrc} to ${tesseractDst}`);
+                }
             } else {
                 core.warning(`[diag] generatedDataPath NOT FOUND: ${generatedDataPath} - .git removal skipped`);
             }
