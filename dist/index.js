@@ -72319,23 +72319,43 @@ async function run() {
 
             await exec.exec(exeDestPath, ['-c', 'setup', '-p', profile.name]);
 
+            // Diagnostic: list what setup generated
+            core.info(`[diag] appDistDir contents after setup: ${fs.existsSync(appDistDir) ? fs.readdirSync(appDistDir).join(', ') : 'DIR NOT FOUND'}`);
+            const generatedDataPath = path.join(appDistDir, 'data');
+            core.info(`[diag] generatedDataPath=${generatedDataPath} exists=${fs.existsSync(generatedDataPath)}`);
+            if (fs.existsSync(generatedDataPath)) {
+                const appsDir = path.join(generatedDataPath, 'apps');
+                if (fs.existsSync(appsDir)) {
+                    core.info(`[diag] data/apps contents: ${fs.readdirSync(appsDir).join(', ')}`);
+                    const appDir = path.join(appsDir, appName);
+                    if (fs.existsSync(appDir)) {
+                        core.info(`[diag] data/apps/${appName} contents: ${fs.readdirSync(appDir).join(', ')}`);
+                    }
+                }
+            }
+
             await removeIfExists(tauriDataPath);
 
-            const generatedDataPath = path.join(appDistDir, 'data');
             if (fs.existsSync(generatedDataPath)) {
                 await io.mv(generatedDataPath, tauriDataPath);
                 core.info(`Moved data for profile ${profile.name} to ${tauriDataPath}`);
-                // Remove .git at known locations (avoid recursive traversal which can hang on symlinks)
+                // Remove .git at known locations
                 const gitPaths = [
                     path.join(tauriDataPath, 'apps', appName, 'repo', '.git'),
                     path.join(tauriDataPath, 'apps', appName, 'working', '.git'),
                 ];
+                core.info(`[diag] checking .git paths: ${gitPaths.join(', ')}`);
                 for (const gitDir of gitPaths) {
-                    if (fs.existsSync(gitDir)) {
+                    const exists = fs.existsSync(gitDir);
+                    core.info(`[diag] ${gitDir} exists=${exists}`);
+                    if (exists) {
+                        core.info(`[diag] removing .git: ${gitDir}`);
                         await io.rmRF(gitDir);
                         core.info(`Removed .git: ${gitDir}`);
                     }
                 }
+            } else {
+                core.warning(`[diag] generatedDataPath NOT FOUND: ${generatedDataPath} - .git removal skipped`);
             }
 
             await exec.exec('pnpm', ['tauri', 'bundle'], { cwd: buildDir });
