@@ -181,9 +181,23 @@ async function run() {
         const exeCached = fs.existsSync(exeSourcePath);
 
         // Always clone pyappify repo (needed for tauri bundle / NSIS packaging)
-        if (!fs.existsSync(buildDir)) {
+        // Check for a repo marker file (package.json) rather than just directory existence,
+        // because cache preparation steps may create the parent directory structure without
+        // actually cloning the repo.
+        const repoMarker = path.join(buildDir, 'package.json');
+        if (!fs.existsSync(repoMarker)) {
             core.startGroup('Cloning pyappify repository');
-            await exec.exec('git', ['clone', 'https://github.com/ok-oldking/pyappify.git', buildDir]);
+            if (fs.existsSync(buildDir)) {
+                core.info(`Build directory exists but repo not cloned yet (marker missing). Cloning into temp and merging.`);
+                const tempCloneDir = `${buildDir}_clone_tmp`;
+                await removeIfExists(tempCloneDir);
+                await exec.exec('git', ['clone', 'https://github.com/ok-oldking/pyappify.git', tempCloneDir]);
+                // Copy cloned content into buildDir (preserving any existing cached exe)
+                fs.cpSync(tempCloneDir, buildDir, { recursive: true, force: true });
+                await io.rmRF(tempCloneDir);
+            } else {
+                await exec.exec('git', ['clone', 'https://github.com/ok-oldking/pyappify.git', buildDir]);
+            }
             if (pyappifyVersion) {
                 core.info(`Checking out specified version: ${pyappifyVersion}`);
                 await exec.exec('git', ['checkout', `tags/${pyappifyVersion}`], { cwd: buildDir });
@@ -202,7 +216,7 @@ async function run() {
             }
             core.endGroup();
         } else {
-            core.info(`Build directory already exists: ${buildDir}`);
+            core.info(`Build directory already contains cloned repo: ${buildDir}`);
         }
 
         // Always setup pnpm (needed for tauri bundle)
