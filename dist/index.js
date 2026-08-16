@@ -72263,6 +72263,17 @@ async function run() {
         const tauriConf = fs.readFileSync(tauriConfPath, 'utf8');
         let newTauriConf = tauriConf.replace(/"pyappify"/g, JSON.stringify(appName));
         newTauriConf = newTauriConf.replace(/"0.0.1"/g, JSON.stringify(pyappifyVersion.replace(/^v/, '')));
+        // NSIS compression: Tauri defaults to solid LZMA, which is
+        // single-threaded and takes ~15min on a GB-scale data payload.
+        // pyappify's installer.nsi honors {{compression}} from this key.
+        const nsisCompression = core.getInput('nsis_compression') || 'zlib';
+        const tauriConfObj = JSON.parse(newTauriConf);
+        tauriConfObj.bundle = tauriConfObj.bundle || {};
+        tauriConfObj.bundle.windows = tauriConfObj.bundle.windows || {};
+        tauriConfObj.bundle.windows.nsis = tauriConfObj.bundle.windows.nsis || {};
+        tauriConfObj.bundle.windows.nsis.compression = nsisCompression;
+        newTauriConf = JSON.stringify(tauriConfObj, null, 2);
+        core.info(`NSIS compression set to: ${nsisCompression}`);
         fs.writeFileSync(tauriConfPath, newTauriConf);
 
         const cargoTomlPath = path.join(buildDir, 'src-tauri', 'Cargo.toml');

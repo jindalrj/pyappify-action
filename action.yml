@@ -17,6 +17,11 @@ inputs:
     type: boolean
     default: false
 
+  nsis_compression:
+    description: NSIS compressor for the setup installers - zlib (fast, default), bzip2, lzma (slowest/smallest, upstream default), or none.
+    required: false
+    default: zlib
+
 outputs:
   dist-path:
     description: The path to the directory containing the zipped application bundles.
